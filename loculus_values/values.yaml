@@ -15,6 +15,8 @@ s3:
   enabled: false
 developmentDatabasePersistence: false
 dataUseTerms:
+  agreementHTML: >
+    I agree to the <a href='/about/terms-of-use/data-use-terms' target='_blank' rel='noopener noreferrer'>data use terms</a>, and I understand <a href='/about/citation' target='_blank' rel='noopener noreferrer'>how to cite</a> data from Pathoplexus.
   enabled: true
   urls:
     open: https://pathoplexus.org/about/terms-of-use/open-data
@@ -57,6 +59,7 @@ auth:
     orcid:
       clientId: "APP-P1P7N7T9YVBHQ4EH"
 disableEnaSubmission: true
+disableTaxonomyService: false
 sequenceFlagging:
   github:
     organization: pathoplexus
@@ -70,19 +73,19 @@ pipelineVersionUpgradeCheckIntervalSeconds: 300
 zstdCompressionLevel: 20
 lineageSystemDefinitions:
   mpox:
-    17: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/mpox/2025-09-09--12-13-13Z/lineages.yaml
+    18: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/mpox/2025-09-09--12-13-13Z/lineages.yaml
   rsv-a:
-    18: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/rsv-a/2025-08-25--09-00-35Z/lineages.yaml
+    19: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/rsv-a/2025-08-25--09-00-35Z/lineages.yaml
   rsv-b:
-    19: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/rsv-b/2025-08-25--09-00-35Z/lineages.yaml
+    20: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/rsv-b/2025-08-25--09-00-35Z/lineages.yaml
   hmpv:
-    20: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/hmpv/2025-09-09--12-13-13Z/lineages.yaml
+    21: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/hmpv/2025-09-09--12-13-13Z/lineages.yaml
   cchfS:
-    20: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/cchf/S/2025-09-24--07-29-03Z/lineages.yaml
+    21: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/cchf/S/2025-09-24--07-29-03Z/lineages.yaml
   marburg:
-    21: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/marburg/2025-09-09--12-13-13Z/lineages.yaml
+    22: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/marburg/2025-09-09--12-13-13Z/lineages.yaml
   dengue:
-   27: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/dengue/all/2025-09-09--12-13-13Z/lineages.yaml
+   28: https://pathoplexus.github.io/silo-lineage-hierarchy-definitions/definitions/dengue/all/2025-09-09--12-13-13Z/lineages.yaml
 defaultOrganismConfig: &defaultOrganismConfig
   schema: &schema
     submissionDataTypes: &defaultSubmissionDataTypes
@@ -1263,11 +1266,17 @@ defaultOrganismConfig: &defaultOrganismConfig
         orderOnDetailsPage: 1560
         definition: "The scientific name of the host from which the sample was collected."
         example: "Homo sapiens"
-        desired: true
+        noInput: true
+        preprocessing:
+          function: scientific_name_from_id
+          inputs:
+            hostTaxonId: processed.hostTaxonId
+            hostNameScientific: hostNameScientific
+          args:
+            taxonomy_service_url: "http://loculus-taxonomy-service:5000"
       - name: hostNameCommon
         displayName: Host name - common
         generateIndex: true
-        autocomplete: true
         header: "Host"
         orderOnDetailsPage: 1580
         ingest: ncbiHostCommonName
@@ -1277,7 +1286,16 @@ defaultOrganismConfig: &defaultOrganismConfig
           type: hostSpecies
           displayGroup: hostSpecies
           label: Host
-      - name: hostTaxonId
+        autocomplete: true
+        noInput: true
+        preprocessing:
+          function: common_name_from_id
+          inputs:
+            hostTaxonId: processed.hostTaxonId
+          args:
+            taxonomy_service_url: "http://loculus-taxonomy-service:5000"
+      - &hostTaxonIdConfig
+        name: hostTaxonId
         displayName: Host taxon ID
         type: int
         autocomplete: true
@@ -1291,6 +1309,15 @@ defaultOrganismConfig: &defaultOrganismConfig
         definition: "Taxon ID for the host"
         guidance: "Use https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi to find taxon ids."
         example: "9606"
+        noInput: true
+        preprocessing:
+          function: validate_host
+          inputs:
+            host: host
+            hostNameScientific: hostNameScientific
+            hostTaxonId: hostTaxonId
+          args:
+            taxonomy_service_url: "http://loculus-taxonomy-service:5000"
       - name: isLabHost
         displayName: Is lab host
         autocomplete: true
@@ -1499,13 +1526,24 @@ defaultOrganismConfig: &defaultOrganismConfig
         - length
       defaultOrderBy: sampleCollectionDate
       defaultOrder: descending
-    extraInputFields: []
+    extraInputFields:
+      - &hostConfig
+        name: host
+        type: string
+        displayName: "Host"
+        definition: "NCBI taxon ID or scientific name that uniquely identifies the host from which the sample was collected."
+        guidance: "You can provide either the scientific name of the organism (e.g., Aedes aegypti) or its NCBI taxon ID (e.g., 7159) in this field. We will validate your input and use it to populate the `host common name` and `host scientific name` fields. When uploading data from a pooled sample, we recommend using a higher-level taxon that includes all host organisms in the sample pool. For example, you can use 'Culicidae' when uploading data for a pooled mosquito sample (in addition to setting the `specimenProcessing` field to 'Samples pooled', see [OBI:0600016])."
+        example: "Aedes aegypti"
+        hideInSearchResultsTable: true
+        hideOnSequenceDetailsPage: true
+        desired: true
+        position: last
     metadataTemplate:
       - geoLocCountry
       - sampleCollectionDate
       - authors
       - authorAffiliations
-      - hostNameScientific
+      - host
       - collectionDevice
       - collectionMethod
       - cultureId
@@ -1559,6 +1597,7 @@ organisms:
           maxNumberOfRecommendedEntries: 3000 # ebola is ~18.5kb
           url: "https://clades.nextstrain.org/?input-fasta={{[unalignedNucleotideSequences+rich|fasta]}}&dataset-name=nextstrain/orthoebolavirus/ebov"
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
       website:
         <<: *website
@@ -1582,7 +1621,7 @@ organisms:
       - <<: *preprocessing
         replicas: 1
         version:
-          - 26
+          - 27
         configFile:
           <<: *preprocessingConfigFile
           segments:
@@ -1634,11 +1673,12 @@ organisms:
           maxNumberOfRecommendedEntries: 3000 # ebola is ~18.5kb
           url: "https://clades.nextstrain.org/?input-fasta={{[unalignedNucleotideSequences+rich|fasta]}}&dataset-name=nextstrain/orthoebolavirus/sudv"
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
     preprocessing:
       - <<: *preprocessing
         version:
-          - 23
+          - 24
         configFile:
           <<: *preprocessingConfigFile
           segments:
@@ -1704,6 +1744,7 @@ organisms:
           maxNumberOfRecommendedEntries: 2500
           url: "https://clades.nextstrain.org/?input-fasta={{[unalignedNucleotideSequences+rich|fasta]}}&dataset-name=community/v-gen-lab/dengue/denv4&dataset-server=https://raw.githubusercontent.com/nextstrain/nextclade_data/master/data_output"
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
       # adding custom description of submissionId to show on website
       extraInputFields:
@@ -1714,7 +1755,12 @@ organisms:
           required: true
           noEdit: true
           position: first
+        - <<: *hostConfig
+          desired: false
+          required: true
       metadataAdd:
+        - <<: *hostTaxonIdConfig
+          required: true
         - name: lineage
           displayName: Lineage
           header: "Lineage & Serotype"
@@ -1727,20 +1773,6 @@ organisms:
           includeInDownloadsByDefault: true
           preprocessing:
             inputs: {input: nextclade.clade}
-        # redeclaring hostNameScientific field, setting it to be required and show up by default in search UI
-        - name: hostNameScientific
-          displayName: Host name - scientific
-          generateIndex: true
-          autocomplete: true
-          header: "Host"
-          ingest: ncbiHostName
-          includeInDownloadsByDefault: true
-          order: 70
-          orderOnDetailsPage: 1560
-          definition: "The scientific name of the host from which the sample was collected. When uploading data from a pooled sample, we recommend using a higher-level taxon that includes all possible host organisms in the sample pool. For example, you can use 'Culicidae' when uploading data for a pooled mosquito sample (in addition to setting the `specimenProcessing` field to 'Samples pooled', see [OBI:0600016])."
-          example: "Homo sapiens"
-          required: true
-          initiallyVisible: true
         - name: specimenCollectorSampleId
           displayName: Isolate name
           header: Sample details
@@ -1797,7 +1829,8 @@ organisms:
     preprocessing:
       - <<: *preprocessing
         version:
-          - 27
+          - 28
+        replicas: 1
         configFile:
           <<: *preprocessingConfigFile
           segment_classification_method: "minimizer"
@@ -1969,6 +2002,7 @@ organisms:
           maxNumberOfRecommendedEntries: 2500 # west nile is ~11kb
           url: "https://clades.nextstrain.org/?input-fasta={{[unalignedNucleotideSequences+rich|fasta]}}&dataset-name=nextstrain/wnv/all-lineages"
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
       metadataAdd:
         - name: lineage
@@ -2000,7 +2034,7 @@ organisms:
     preprocessing:
       - <<: *preprocessing
         version:
-          - 24
+          - 25
         configFile:
           <<: *preprocessingConfigFile
           segments:
@@ -2072,6 +2106,7 @@ organisms:
           maxNumberOfRecommendedEntries: 10000 # cchf S is ~1.7kB
           url: "https://clades.nextstrain.org/?input-fasta={{[unalignedNucleotideSequences:S+rich|fasta]}}&dataset-name=community/pathoplexus/cchfv/S"
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
       metadataAdd:
         - name: lineage_S
@@ -2106,7 +2141,7 @@ organisms:
     preprocessing:
       - <<: *preprocessing
         version:
-          - 20
+          - 21
         configFile:
           <<: *preprocessingConfigFile
           log_level: DEBUG
@@ -2178,6 +2213,7 @@ organisms:
           maxNumberOfRecommendedEntries: 200 # Nextclade handles ~80MB of sequences, mpox is ~197kB
           url: "https://clades.nextstrain.org/?input-fasta={{[unalignedNucleotideSequences+rich|fasta]}}&dataset-name=nextstrain/mpox/all-clades"
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
       metadataAdd:
         - name: clade
@@ -2255,7 +2291,7 @@ organisms:
         <<: *preprocessing
         replicas: 1
         version:
-          - 17
+          - 18
         configFile:
           <<: *preprocessingConfigFile
           batch_size: 5
@@ -2266,7 +2302,7 @@ organisms:
               - name: singleReference
                 nextclade_dataset_name: nextstrain/mpox/all-clades
                 nextclade_dataset_tag: 2025-12-16--20-07-31Z
-                genes: &mpoxGenes
+                genes:
                   - OPG001
                   - OPG002
                   - OPG003
@@ -2445,7 +2481,7 @@ organisms:
       # - <<: *mpoxPreprocessing
       #   replicas: 3
       #   version:
-      #     - 17
+      #     - 18
       #   configFile:
       #     <<: *preprocessingConfigFile
       #     batch_size: 10
@@ -2830,6 +2866,7 @@ organisms:
           maxNumberOfRecommendedEntries: 1300 # RSV is ~15kB
           url: "https://clades.nextstrain.org/?input-fasta={{[unalignedNucleotideSequences+rich|fasta]}}&dataset-name=nextstrain/rsv/a/EPI_ISL_412866"
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
       metadataAdd:
         - name: lineage
@@ -2874,7 +2911,7 @@ organisms:
     preprocessing:
       - <<: *preprocessing
         version:
-          - 18
+          - 19
         replicas: 1
         configFile:
           <<: *preprocessingConfigFile
@@ -2945,6 +2982,7 @@ organisms:
           maxNumberOfRecommendedEntries: 1300 # RSV is ~15kB
           url: "https://clades.nextstrain.org/?input-fasta={{[unalignedNucleotideSequences+rich|fasta]}}&dataset-name=nextstrain/rsv/b/EPI_ISL_1653999"
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
       metadataAdd:
         - name: lineage
@@ -2989,7 +3027,7 @@ organisms:
     preprocessing:
       - <<: *preprocessing
         version:
-          - 19
+          - 20
         replicas: 1
         configFile:
           <<: *preprocessingConfigFile
@@ -3060,6 +3098,7 @@ organisms:
           maxNumberOfRecommendedEntries: 1500 # HMPV is ~13kB
           url: "https://clades.nextstrain.org/?input-fasta={{[unalignedNucleotideSequences+rich|fasta]}}&dataset-name=nextstrain/hmpv/all-clades/NC_039199"
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
       metadataAdd:
         - name: lineage
@@ -3094,7 +3133,7 @@ organisms:
       - <<: *preprocessing
         replicas: 1
         version:
-          - 20
+          - 21
         configFile:
           <<: *preprocessingConfigFile
           segments:
@@ -3148,6 +3187,7 @@ organisms:
       image: "/images/organisms/measles_small.jpg"
       linkOuts:
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
         - name: "Nextclade"
           maxNumberOfRecommendedEntries: 1000 # Measles is ~15.9kB
@@ -3189,7 +3229,8 @@ organisms:
     preprocessing:
       - <<: *preprocessing
         version:
-          - 24
+          - 25
+        replicas: 1
         configFile:
           <<: *preprocessingConfigFile
           segments:
@@ -3241,6 +3282,7 @@ organisms:
       image: "/images/organisms/marburg.jpg"
       linkOuts:
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
         - name: "Nextclade"
           maxNumberOfRecommendedEntries: 3000 # marburg is ~19kb
@@ -3276,7 +3318,7 @@ organisms:
     preprocessing:
       - <<: *preprocessing
         version:
-          - 21
+          - 22
         replicas: 1
         configFile:
           <<: *preprocessingConfigFile
@@ -3330,6 +3372,7 @@ organisms:
           maxNumberOfRecommendedEntries: 2500 # yellow fever is ~11kb
           url: "https://clades.nextstrain.org/?input-fasta={{[unalignedNucleotideSequences+rich|fasta]}}&dataset-name=community/pathoplexus/yellow-fever-virus&dataset-server=https://raw.githubusercontent.com/maverbiest/nextclade_data/yellow-fever-virus/data_output"
         - name: "Country map"
+          maxNumberOfRecommendedEntries: 45000
           url: "https://mapoplexus.genomium.org/?url={{[metadata]}}"
       # adding custom description of submissionId to show on website
       extraInputFields:
@@ -3340,7 +3383,12 @@ organisms:
           required: true
           noEdit: true
           position: first
+        - <<: *hostConfig
+          desired: false
+          required: true
       metadataAdd:
+        - <<: *hostTaxonIdConfig
+          required: true
         - name: clade
           displayName: Clade
           header: "Clade"
@@ -3353,20 +3401,6 @@ organisms:
             inputs: {input: nextclade.clade}
           order: 5
           orderOnDetailsPage: 740
-        # redeclaring hostNameScientific field, setting it to be required and show up by default in search UI
-        - name: hostNameScientific
-          displayName: Host name - scientific
-          generateIndex: true
-          autocomplete: true
-          header: "Host"
-          ingest: ncbiHostName
-          includeInDownloadsByDefault: true
-          order: 70
-          orderOnDetailsPage: 1560
-          definition: "The scientific name of the host from which the sample was collected. When uploading data from a pooled sample, we recommend using a higher-level taxon that includes all possible host organisms in the sample pool. For example, you can use 'Culicidae' when uploading data for a pooled mosquito sample (in addition to setting the `specimenProcessing` field to 'Samples pooled [OBI:0600016], see [OBI:0600016])."
-          example: "Homo sapiens"
-          required: true
-          initiallyVisible: true
         - name: specimenCollectorSampleId
           displayName: Isolate name
           header: Sample details
@@ -3415,7 +3449,7 @@ organisms:
     preprocessing:
       - <<: *preprocessing
         version:
-          - 26
+          - 27
         configFile:
           <<: *preprocessingConfigFile
           segments:
@@ -3477,6 +3511,10 @@ defaultResources:
   limits:
     memory: "1Gi"
     cpu: "1000m"
+
+taxonomyService:
+  dbVersion: "ncbi_taxonomy_latest"
+  taxonomyDbPath: "/data/taxonomy.sqlite" # this is where the init container mounts the database
 
 resources:
   ingest:
